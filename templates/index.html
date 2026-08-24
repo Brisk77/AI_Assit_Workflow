@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Account settings</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f5f5;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  form {
+    background: #fff;
+    max-width: 400px;
+    width: 100%;
+    padding: 24px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+  }
+  h2 { margin: 0 0 20px; font-size: 18px; color: #111; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  input[type="text"], input[type="email"], input[type="password"] {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+  }
+  input:focus { border-color: #2563eb; }
+  input.invalid { border-color: #dc2626; }
+  .error {
+    display: none;
+    color: #dc2626;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .error.show { display: block; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; font-size: 13px; color: #333; }
+  button {
+    width: 100%;
+    padding: 10px;
+    background: #111;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  button:hover:not(:disabled) { background: #333; }
+  .status { text-align: center; font-size: 13px; margin-top: 10px; color: #16a34a; display: none; }
+  .status.show { display: block; }
+</style>
+</head>
+<body>
+
+<form id="settings-form" novalidate>
+  <h2>Account settings</h2>
+
+  <div class="field">
+    <label for="displayName">Display name</label>
+    <input type="text" id="displayName" name="displayName" placeholder="Jane Doe">
+    <div class="error" id="displayName-error"></div>
+  </div>
+
+  <div class="field">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="jane@example.com">
+    <div class="error" id="email-error"></div>
+  </div>
+
+  <div class="field">
+    <label for="password">New password (leave blank to keep current)</label>
+    <input type="password" id="password" name="password" placeholder="••••••••">
+    <div class="error" id="password-error"></div>
+  </div>
+
+  <div class="field">
+    <label for="confirmPassword">Confirm password</label>
+    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="••••••••">
+    <div class="error" id="confirmPassword-error"></div>
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="notifications" name="notifications" checked>
+    <label for="notifications" style="margin:0;">Email me about account activity</label>
+  </div>
+
+  <button type="submit" id="submit-btn">Save changes</button>
+  <div class="status" id="status">Saved</div>
+</form>
+
+<script>
+// --- Validation rules: pure functions, mirror these server-side (Flask) ---
+const validators = {
+  displayName: (v) => {
+    v = v.trim();
+    if (!v) return "Display name is required";
+    if (v.length < 2) return "Must be at least 2 characters";
+    if (v.length > 50) return "Must be under 50 characters";
+    return null;
+  },
+  email: (v) => {
+    if (!v.trim()) return "Email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email";
+    return null;
+  },
+  password: (v) => {
+    if (!v) return null; // optional — only validate if changing it
+    if (v.length < 8) return "Must be at least 8 characters";
+    if (!/[A-Z]/.test(v)) return "Must include an uppercase letter";
+    if (!/[0-9]/.test(v)) return "Must include a number";
+    return null;
+  },
+  confirmPassword: (v, form) => {
+    if (!form.password.value) return null;
+    if (v !== form.password.value) return "Passwords do not match";
+    return null;
+  },
+};
+
+const form = document.getElementById("settings-form");
+const submitBtn = document.getElementById("submit-btn");
+const status = document.getElementById("status");
+const fields = ["displayName", "email", "password", "confirmPassword"];
+
+function showError(name, message) {
+  const input = form[name];
+  const errorEl = document.getElementById(`${name}-error`);
+  if (message) {
+    input.classList.add("invalid");
+    errorEl.textContent = message;
+    errorEl.classList.add("show");
+  } else {
+    input.classList.remove("invalid");
+    errorEl.classList.remove("show");
+  }
+}
+
+function validateField(name) {
+  const error = validators[name](form[name].value, form);
+  showError(name, error);
+  return error;
+}
+
+// validate on blur, and re-validate on input once a field has been touched
+fields.forEach((name) => {
+  const input = form[name];
+  input.addEventListener("blur", () => validateField(name));
+  input.addEventListener("input", () => {
+    if (input.classList.contains("invalid")) validateField(name);
+  });
+});
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const errors = fields.map(validateField).filter(Boolean);
+  if (errors.length > 0) return;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Saving...";
+  status.classList.remove("show");
+
+  const payload = {
+    displayName: form.displayName.value.trim(),
+    email: form.email.value.trim(),
+    password: form.password.value,
+    notifications: form.notifications.checked,
+  };
+
+  try {
+    // Replace with your real endpoint:
+    // const res = await fetch("/api/settings", {
+    //   method: "PUT",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify(payload),
+    // });
+    // if (!res.ok) throw new Error("Save failed");
+    await new Promise((r) => setTimeout(r, 800)); // mock latency
+
+    status.classList.add("show");
+    setTimeout(() => status.classList.remove("show"), 2000);
+  } catch (err) {
+    showError("email", "Could not save — try again");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Save changes";
+  }
+});
+</script>
+
+</body>
+</html>
